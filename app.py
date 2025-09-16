@@ -57,30 +57,42 @@ def extract_spreadsheet_id(spreadsheet_url: str) -> str:
 # ---------- Timeline helpers ----------
 def _parse_date_to_parts(date_value) -> dict:
     """Return {year, month, day} from a Date cell.
-    Accepts formats like '3/9' (dd/mm), '2025-09-03', pandas Timestamp, or date.
+    Accepts formats like '3/9' (m/d), '2025-09-03', pandas Timestamp, or date.
     Missing year defaults to the current year.
     """
     try:
-        import datetime as _dt
+        # Handle NaN
         if pd.isna(date_value):
             today = _dt.date.today()
             return {"year": today.year, "month": today.month, "day": today.day}
+
+        # Already a date-like object
         if hasattr(date_value, "year") and hasattr(date_value, "month") and hasattr(date_value, "day"):
-            return {"year": int(date_value.year), "month": int(date_value.month), "day": int(date_value.day)}
+            return {"year": int(date_value.year),
+                    "month": int(date_value.month),
+                    "day": int(date_value.day)}
+
         s = str(date_value).strip()
-        # dd/mm or d/m
+
+        # m/d or mm/dd (US style month/day)
         if "/" in s and s.count("/") == 1:
-            d_str, m_str = s.split("/")
+            m_str, d_str = s.split("/")
             today = _dt.date.today()
-            return {"year": today.year, "month": int(m_str), "day": int(d_str)}
-        # Try pandas to_datetime fallback
+            return {"year": today.year,
+                    "month": int(m_str),
+                    "day": int(d_str)}
+
+        # Fallback: use pandas to_datetime
         ts = pd.to_datetime(s, errors="coerce")
         if pd.notna(ts):
-            return {"year": int(ts.year), "month": int(ts.month), "day": int(ts.day)}
+            return {"year": int(ts.year),
+                    "month": int(ts.month),
+                    "day": int(ts.day)}
+
     except Exception:
         pass
-    # Fallback: today
-    import datetime as _dt
+
+    # Final fallback: today
     today = _dt.date.today()
     return {"year": today.year, "month": today.month, "day": today.day}
 

@@ -336,19 +336,115 @@ for col in ["Plan cost", "Actual cost"]:
 
 # Sidebar filters
 st.sidebar.header("Filters")
+# Initialize selections from session_state or defaults
+if "__selected_dates__" not in st.session_state:
+    st.session_state["__selected_dates__"] = []
+if "__selected_activities__" not in st.session_state:
+    st.session_state["__selected_activities__"] = []
+if "__selected_places__" not in st.session_state:
+    st.session_state["__selected_places__"] = []
+
+# Date filter (reactive)
 if "Date" in df.columns:
     unique_dates = sorted([d for d in df["Date"].dropna().unique().tolist()])
-    if "__selected_dates__" not in st.session_state:
-        st.session_state["__selected_dates__"] = unique_dates
-    with st.sidebar.form("filters_form"):
-        sel = st.multiselect("Date", unique_dates, default=st.session_state["__selected_dates__"])
-        apply_filters = st.form_submit_button("Apply")
-    if apply_filters:
-        st.session_state["__selected_dates__"] = sel if sel else unique_dates
-    selected_dates = st.session_state["__selected_dates__"]
-    df_view = df[df["Date"].isin(selected_dates)] if selected_dates else df
-else:
-    df_view = df
+    date_options = ["All"] + unique_dates
+    default_date_opt = st.session_state["__selected_dates__"][0] if st.session_state["__selected_dates__"] else "All"
+    sel_date_opt = st.sidebar.selectbox("Date", date_options, index=(date_options.index(default_date_opt) if default_date_opt in date_options else 0), key="filter_date")
+    st.session_state["__selected_dates__"] = [] if sel_date_opt == "All" else [sel_date_opt]
+
+# Activity filter (reactive)
+if "Activity" in df.columns:
+    activities = sorted([a for a in df["Activity"].dropna().unique().tolist()])
+    act_options = ["All"] + activities
+    default_act_opt = st.session_state["__selected_activities__"][0] if st.session_state["__selected_activities__"] else "All"
+    sel_act_opt = st.sidebar.selectbox("Activity", act_options, index=(act_options.index(default_act_opt) if default_act_opt in act_options else 0), key="filter_activity")
+    st.session_state["__selected_activities__"] = [] if sel_act_opt == "All" else [sel_act_opt]
+
+# Place filter (reactive)
+if "Place" in df.columns:
+    places = sorted([p for p in df["Place"].dropna().unique().tolist()])
+    place_options = ["All"] + places
+    default_place_opt = st.session_state["__selected_places__"][0] if st.session_state["__selected_places__"] else "All"
+    sel_place_opt = st.sidebar.selectbox("Place", place_options, index=(place_options.index(default_place_opt) if default_place_opt in place_options else 0), key="filter_place")
+    st.session_state["__selected_places__"] = [] if sel_place_opt == "All" else [sel_place_opt]
+
+selected_dates = st.session_state.get("__selected_dates__", [])
+selected_activities = st.session_state.get("__selected_activities__", [])
+selected_places = st.session_state.get("__selected_places__", [])
+
+# Start from full df and apply filters if selections exist
+_dfv = df.copy()
+if selected_dates and "Date" in _dfv.columns:
+    _dfv = _dfv[_dfv["Date"].isin(selected_dates)]
+if selected_activities and "Activity" in _dfv.columns:
+    _dfv = _dfv[_dfv["Activity"].isin(selected_activities)]
+if selected_places and "Place" in _dfv.columns:
+    _dfv = _dfv[_dfv["Place"].isin(selected_places)]
+
+df_view = _dfv
+
+# Metric card helper (moved up)
+def render_metric_card(title: str, value: str, delta: str | None = None, icon: str | None = None, color: str = "#3b82f6") -> None:
+    icon_span = f"<span style='font-size:20px;margin-right:8px'>{icon}</span>" if icon else ""
+    delta_html = f"<div style='color:#059669;font-weight:600;margin-top:2px'>{delta}</div>" if delta else ""
+    html = f"""
+    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04);">
+      <div style="display:flex;align-items:center;gap:8px;color:#6b7280;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;">
+        <div style="width:8px;height:8px;border-radius:50%;background:{color}"></div>
+        <div>{title}</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
+        {icon_span}
+        <div style="font-size:20px;font-weight:700;color:#111827;line-height:1.1">{value}</div>
+      </div>
+      {delta_html}
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# Determine cost column quickly for header
+_header_cost_col = "Actual cost" if ("Actual cost" in df_view.columns and df_view["Actual cost"].notna().any()) else ("Plan cost" if "Plan cost" in df_view.columns else None)
+cols = st.columns([1, 1, 1, 2])
+with cols[0]:
+    total_cost = float(df_view[_header_cost_col].fillna(0).sum()) if _header_cost_col else 0.0
+    render_metric_card("Total cost", f"{total_cost:,.0f}", icon="💰", color="#111827")
+with cols[1]:
+    total_hours = float(df_view["Time_h"].fillna(0).sum()) if "Time_h" in df_view.columns else 0.0
+    render_metric_card("Total hours", f"{int(total_hours)}h", icon="⏳", color="#0ea5e9")
+with cols[2]:
+    places_count = int(df_view["Place"].nunique()) if "Place" in df_view.columns else 0
+    render_metric_card("Places visited", f"{places_count}", icon="📍", color="#8b5cf6")
+with cols[3]:
+    if "Date" in df_view.columns and not df_view["Date"].dropna().empty:
+        try:
+            dt_series = pd.to_datetime(df_view["Date"], errors="coerce")
+            dt_series = dt_series.dropna()
+            start_day = dt_series.min()
+            end_day = dt_series.max()
+            start_hour = None
+            end_hour = None
+            if "Hour_num" in df_view.columns and df_view["Hour_num"].notna().any():
+                # Find min hour on start day and max hour on end day
+                start_hour = pd.to_numeric(df_view.loc[pd.to_datetime(df_view["Date"], errors="coerce") == start_day, "Hour_num"], errors="coerce").min()
+                end_hour = pd.to_numeric(df_view.loc[pd.to_datetime(df_view["Date"], errors="coerce") == end_day, "Hour_num"], errors="coerce").max()
+            def _fmt(dt, hour):
+                try:
+                    if pd.notna(hour):
+                        return f"{dt.strftime('%b %d, %Y')} {int(hour):02d}:00"
+                except Exception:
+                    pass
+                return dt.strftime('%b %d, %Y')
+            start_str = _fmt(start_day, start_hour)
+            end_str = _fmt(end_day, end_hour)
+            date_text = f"{start_str} — {end_str}"
+        except Exception:
+            vals = sorted([str(x) for x in df_view["Date"].dropna().unique().tolist()])
+            date_text = f"{vals[0]} — {vals[-1]}" if vals else "–"
+    else:
+        date_text = "–"
+    render_metric_card("Date range", date_text, icon="📅", color="#64748b")
+st.markdown("")
 
 with stylable_container(key="vmk_timeline_container",
         css_styles="""
@@ -453,25 +549,6 @@ if not place.empty and cost_col:
         corr = float(place[["Time_h", cost_col]].corr().iloc[0, 1])
     except Exception:
         corr = None
-
-# Helper: custom metric card
-def render_metric_card(title: str, value: str, delta: str | None = None, icon: str | None = None, color: str = "#3b82f6") -> None:
-    icon_span = f"<span style='font-size:20px;margin-right:8px'>{icon}</span>" if icon else ""
-    delta_html = f"<div style='color:#059669;font-weight:600;margin-top:2px'>{delta}</div>" if delta else ""
-    html = f"""
-    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04);">
-      <div style="display:flex;align-items:center;gap:8px;color:#6b7280;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;">
-        <div style="width:8px;height:8px;border-radius:50%;background:{color}"></div>
-        <div>{title}</div>
-      </div>
-      <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
-        {icon_span}
-        <div style="font-size:20px;font-weight:700;color:#111827;line-height:1.1">{value}</div>
-      </div>
-      {delta_html}
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
 
 # Summary container
 with stylable_container(key="vmk_summary_container",

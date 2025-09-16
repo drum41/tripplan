@@ -7,8 +7,6 @@ import pandas as pd
 import altair as alt
 import os
 import json
-import pydeck as pdk
-import numpy as np
 try:
     from streamlit_timeline import timeline as st_timeline
 except Exception:

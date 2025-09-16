@@ -1,6 +1,2 @@
 [theme]
-primaryColor = "#005BAC"        
-backgroundColor = "#F2F8FF"      # Light blue background
-secondaryBackgroundColor = "#FFFFFF"  # White cards/containers
-textColor = "#0C1C2C"            # Dark gray/blue text
-base = "light"
+

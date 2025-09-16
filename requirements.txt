@@ -1,7 +1,7 @@
 streamlit
 st-gsheets-connection == 0.1.0
 certifi
-streamlit_extra
+streamlit-extras
 pandas
 streamlit_timeline
 altair
